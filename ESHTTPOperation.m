@@ -121,6 +121,8 @@ static int32_t GetOperationID(void)
 - (void)dealloc
 {
 	//cancel connection / close outputstream?
+	if (_completionQueue != NULL)
+		dispatch_release(_completionQueue);
 }
 
 #pragma mark - Completion Queue
