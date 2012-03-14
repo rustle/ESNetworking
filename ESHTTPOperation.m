@@ -14,6 +14,9 @@ dispatch_queue_t dispatch_get_processing_queue(void)
 NSString * kESHTTPOperationErrorDomain = @"ESHTTPOperationErrorDomain";
 
 @interface ESHTTPOperation ()
+{
+	dispatch_queue_t _completionQueue;
+}
 + (void)networkRunLoopThreadEntry;
 + (NSThread *)networkRunLoopThread;
 @property (copy, nonatomic) ESHTTPOperationUploadBlock uploadProgress;
@@ -120,6 +123,27 @@ static int32_t GetOperationID(void)
 	//cancel connection / close outputstream?
 }
 
+#pragma mark - Completion Queue
+
+- (dispatch_queue_t)completionQueue
+{
+	if (_completionQueue != NULL)
+		return _completionQueue;
+	return dispatch_get_main_queue();
+}
+
+- (void)setCompletionQueue:(dispatch_queue_t)completionQueue
+{
+	if (completionQueue != _completionQueue)
+	{
+		if (_completionQueue != NULL)
+			dispatch_release(_completionQueue);
+		if (completionQueue != NULL)
+			dispatch_retain(completionQueue);
+		_completionQueue = completionQueue;
+	}
+}
+
 #pragma mark - Start and finish overrides
 
 - (void)operationDidStart
@@ -187,7 +211,7 @@ static int32_t GetOperationID(void)
 	[super finishWithError:error];
 	if (self.completion)
 	{
-		dispatch_async(dispatch_get_main_queue(), ^{
+		dispatch_async(self.completionQueue, ^{
 			self.completion(self);
 		});
 	}

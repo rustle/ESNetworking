@@ -57,7 +57,6 @@
 										 return json;
 									 }
 							   completion:^(ESHTTPOperation *op) {
-								   NSParameterAssert([NSThread isMainThread]);
 								   ESJSONOperation *jsonOp = (ESJSONOperation *)op;
 								   NSError *error = op.error;
 								   if (error) 

@@ -92,6 +92,14 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
 @property (copy, readonly) ESHTTPOperationCompletionBlock completion;
 @property (assign, readonly) NSInteger operationID;
 
+/**
+ Queue used to call completion block, if NULL, main queue is used.
+ 
+ Default is NULL
+ */
+- (dispatch_queue_t)completionQueue;
+- (void)setCompletionQueue:(dispatch_queue_t)completionQueue;
+
 ///-----------------------------------------
 /// @name Configure before queuing operation
 ///-----------------------------------------
