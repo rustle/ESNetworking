@@ -45,6 +45,7 @@ NSString * kESHTTPOperationErrorDomain = @"ESHTTPOperationErrorDomain";
 @synthesize operationID=_operationID;
 @synthesize cancelOnStatusCodeError=_cancelOnStatusCodeError;
 @synthesize cancelOnContentTypeError=_cancelOnContentTypeError;
+@synthesize totalBytesWritten=_totalBytesWritten;
 
 static NSThread *_networkRunLoopThread = nil;
 
@@ -240,6 +241,7 @@ static int32_t GetOperationID(void)
 	NSParameterAssert(connection == self.connection);
 #pragma unused(connection)
 	NSParameterAssert([response isKindOfClass:[NSHTTPURLResponse class]]);
+	self.totalBytesWritten = 0;
 	self.lastResponse = (NSHTTPURLResponse *)response;
 	if (self.cancelOnStatusCodeError && !self.isStatusCodeAcceptable)
 	{
@@ -310,7 +312,11 @@ static int32_t GetOperationID(void)
 		if (self.dataAccumulator != nil)
 		{
 			if (self.downloadProgress)
-				self.downloadProgress([self.dataAccumulator length] + [data length], (NSUInteger)[self.lastResponse expectedContentLength]);
+			{
+				dispatch_async(dispatch_get_main_queue(), ^{
+					self.downloadProgress([self.dataAccumulator length] + [data length], (NSUInteger)[self.lastResponse expectedContentLength]);
+				});
+			}
 			if (([self.dataAccumulator length] + [data length]) <= self.maximumResponseSize)
 				[self.dataAccumulator appendData:data];
 			else
@@ -343,10 +349,19 @@ static int32_t GetOperationID(void)
 					break;
 				}
 				else
+				{
 					dataOffset += bytesWritten;
+					self.totalBytesWritten += bytesWritten;
+				}
 			}
 			while (YES);
 			
+			if (self.downloadProgress) 
+			{
+				dispatch_async(dispatch_get_main_queue(), ^{
+			        self.downloadProgress(self.totalBytesWritten, (NSUInteger)[self.lastResponse expectedContentLength]);
+				});
+			}
 			if (error != nil)
 				[self processRequest:error];
 		}

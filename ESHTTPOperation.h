@@ -252,6 +252,9 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
 @property (strong, readwrite) NSURLConnection* connection;
 @property (assign, readwrite) BOOL firstData;
 @property (strong, readwrite) NSMutableData* dataAccumulator;
+// If you are using an outputstream and which to have the progress call backs start from
+// something other than 0, set totalBytesWritten to the desired starting point 
+@property (nonatomic) NSUInteger totalBytesWritten;
 
 @end
 
