@@ -9,6 +9,7 @@
 
 @implementation ESRunLoopOperation
 {
+@private
 	NSRecursiveLock *lock;
 }
 

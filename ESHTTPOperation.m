@@ -15,7 +15,12 @@ NSString * kESHTTPOperationErrorDomain = @"ESHTTPOperationErrorDomain";
 
 @interface ESHTTPOperation ()
 {
+@private
 	dispatch_queue_t _completionQueue;
+	NSMutableIndexSet *_acceptableStatusCodes;
+	NSRecursiveLock *_acceptableStatusCodesLock;
+	NSMutableSet *_acceptableContentTypes;
+	NSRecursiveLock *_acceptableContentTypesLock;
 }
 + (void)networkRunLoopThreadEntry;
 + (NSThread *)networkRunLoopThread;
@@ -34,8 +39,6 @@ NSString * kESHTTPOperationErrorDomain = @"ESHTTPOperationErrorDomain";
 @synthesize connection=_connection;
 @synthesize firstData=_firstData;
 @synthesize dataAccumulator=_dataAccumulator;
-@synthesize acceptableStatusCodes=_acceptableStatusCodes;
-@synthesize acceptableContentTypes=_acceptableContentTypes;
 @synthesize outputStream=_outputStream;
 @synthesize maximumResponseSize=_maximumResponseSize;
 @synthesize completion=_completion;
@@ -115,6 +118,8 @@ static int32_t GetOperationID(void)
 		_maximumResponseSize = 4 * 1024 * 1024;
 		_firstData = YES;
 		_operationID = GetOperationID();
+		_acceptableStatusCodesLock = [NSRecursiveLock new];
+		_acceptableContentTypesLock = [NSRecursiveLock new];
 	}
 	return self;
 }
@@ -511,11 +516,26 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 
 - (NSIndexSet *)acceptableStatusCodes
 {
-	return _acceptableStatusCodes;
+	[_acceptableStatusCodesLock lock];
+	NSIndexSet *acceptableStatusCodes;
+	if (_acceptableStatusCodes != nil)
+	{
+		acceptableStatusCodes = _acceptableStatusCodes;
+	}
+	else
+	{
+		[self willChangeValueForKey:@"acceptableStatusCodes"];
+		_acceptableStatusCodes = [NSMutableIndexSet indexSetWithIndexesInRange:NSMakeRange(200, 100)];
+		[self didChangeValueForKey:@"acceptableStatusCodes"];
+		acceptableStatusCodes = _acceptableStatusCodes;
+	}
+	[_acceptableStatusCodesLock unlock];
+	return acceptableStatusCodes;
 }
 
 - (void)setAcceptableStatusCodes:(NSIndexSet *)newValue
 {
+	[_acceptableStatusCodesLock lock];
 	if (self.state != kESOperationStateInited)
 		[NSException raise:@"Set Acceptable Status Codes in Invalid State" 
 					format:@"Attempted to setAcceptableStatusCodes while in state: %d. AcceptableStatusCode may only be set prior to queueing operation", self.state];
@@ -524,15 +544,27 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 		if (newValue != _acceptableStatusCodes)
 		{
 			[self willChangeValueForKey:@"acceptableStatusCodes"];
-			_acceptableStatusCodes = [newValue copy];
+			_acceptableStatusCodes = [newValue mutableCopy];
 			[self didChangeValueForKey:@"acceptableStatusCodes"];
 		}
 	}
+	[_acceptableStatusCodesLock unlock];
 }
 
-+ (NSIndexSet *)defaultAcceptableStatusCodes 
+- (void)addAcceptableStatusCode:(NSUInteger)statusCode
 {
-	return [NSIndexSet indexSetWithIndexesInRange:NSMakeRange(200, 100)];
+	[_acceptableStatusCodesLock lock];
+	NSMutableIndexSet *statusCodes = (NSMutableIndexSet *)self.acceptableStatusCodes;
+	[statusCodes addIndex:statusCode];
+	[_acceptableStatusCodesLock unlock];
+}
+
+- (void)removeAcceptableStatusCode:(NSUInteger)statusCode
+{
+	[_acceptableStatusCodesLock lock];
+	NSMutableIndexSet *statusCodes = (NSMutableIndexSet *)self.acceptableStatusCodes;
+	[statusCodes removeIndex:statusCode];
+	[_acceptableStatusCodesLock unlock];
 }
 
 + (BOOL)automaticallyNotifiesObserversOfAcceptableContentTypes
@@ -542,11 +574,26 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 
 - (NSSet *)acceptableContentTypes
 {
-	return _acceptableContentTypes;
+	[_acceptableContentTypesLock lock];
+	NSSet *acceptableContentTypes;
+	if (_acceptableContentTypes != nil)
+	{
+		acceptableContentTypes = _acceptableContentTypes;
+	}
+	else
+	{
+		[self willChangeValueForKey:@"acceptableContentTypes"];
+		_acceptableContentTypes = [NSMutableSet set];
+		[self didChangeValueForKey:@"acceptableContentTypes"];
+		acceptableContentTypes = _acceptableContentTypes;
+	}
+	[_acceptableContentTypesLock unlock];
+	return acceptableContentTypes;
 }
 
 - (void)setAcceptableContentTypes:(NSSet *)newValue
 {
+	[_acceptableContentTypesLock lock];
 	if (self.state != kESOperationStateInited)
 		[NSException raise:@"Set Acceptable Content Types in Invalid State" 
 					format:@"Attempted to setAcceptableContentTypes while in state: %d. Acceptable Content Types may only be set prior to queueing operation", self.state];
@@ -559,11 +606,27 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 			[self didChangeValueForKey:@"acceptableContentTypes"];
 		}
 	}
+	[_acceptableContentTypesLock unlock];
 }
 
-+ (NSSet *)defaultAcceptableContentTypes 
+- (void)addAcceptableContentType:(NSString *)contentType
 {
-	return nil;
+	if (contentType == nil)
+		return;
+	[_acceptableContentTypesLock lock];
+	NSMutableSet *acceptableContentType = (NSMutableSet *)self.acceptableContentTypes;
+	[acceptableContentType addObject:contentType];
+	[_acceptableContentTypesLock unlock];
+}
+
+- (void)removeAcceptableContentType:(NSString *)contentType
+{
+	if (contentType == nil)
+		return;
+	[_acceptableContentTypesLock lock];
+	NSMutableSet *acceptableContentType = (NSMutableSet *)self.acceptableContentTypes;
+	[acceptableContentType removeObject:contentType];
+	[_acceptableContentTypesLock unlock];
 }
 
 + (BOOL)automaticallyNotifiesObserversOfOutputStream
@@ -658,8 +721,6 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 	NSInteger statusCode;
 	NSParameterAssert(self.lastResponse != nil);
 	acceptableStatusCodes = self.acceptableStatusCodes;
-	if (acceptableStatusCodes == nil)
-		acceptableStatusCodes = [[self class] defaultAcceptableStatusCodes];
 	NSParameterAssert(acceptableStatusCodes != nil);
 	statusCode = [self.lastResponse statusCode];
 	return (statusCode >= 0) && [acceptableStatusCodes containsIndex:(NSUInteger)statusCode];
@@ -671,9 +732,7 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 	NSParameterAssert(self.lastResponse != nil);
 	contentType = [self.lastResponse MIMEType];
 	NSSet *acceptableContentTypes = self.acceptableContentTypes;
-	if (acceptableContentTypes == nil)
-		acceptableContentTypes = [[self class] defaultAcceptableContentTypes];
-	return ((acceptableContentTypes == nil) || ((contentType != nil) && [acceptableContentTypes containsObject:contentType]));
+	return ((acceptableContentTypes == nil) || (acceptableContentTypes.count == 0) || ((contentType != nil) && [acceptableContentTypes containsObject:contentType]));
 }
 
 @end

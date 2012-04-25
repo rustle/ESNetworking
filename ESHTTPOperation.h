@@ -106,37 +106,57 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
 
 // runLoopThread and runLoopModes inherited from ESRunLoopOperation
 /**
- * Acceptable status codes returned by NSHTTPURLResponse
+ * `NSIndexSet` object containing the ranges of acceptable HTTP status codes returned by NSHTTPURLResponse
  * 
- * http://www.ietf.org/rfc/rfc2616.txt
+ * (http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)
  * 
- * Default is nil, implying 200..299
+ * Default is is the range 200 to 299, inclusive.
+ * 
+ * IMPORTANT: Because of the way acceptableStatusCodes posts KVO notifications
+ * and the restrictions on when it is safe to setAcceptableStatusCodes
+ * overriding the setter/getter for this property is not recommeneed.
+ * Set the property using the setter in your subclasses designated
+ * initializer or when you are creating the object.
+ * Setting acceptable status codes after the operation has been
+ * enqueued is not considered safe.
  * 
  * @see cancelOnStatusCodeError
  */
 @property (copy, readwrite) NSIndexSet *acceptableStatusCodes;
 /**
- Returns an `NSIndexSet` object containing the ranges of acceptable HTTP status codes (http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)
- 
- By default, this is the range 200 to 299, inclusive.
+ * 
  */
-+ (NSIndexSet *)defaultAcceptableStatusCodes;
+- (void)addAcceptableStatusCode:(NSUInteger)statusCode;
 /**
- * Acceptable content types
  * 
- * http://www.ietf.org/rfc/rfc2616.txt
+ */
+- (void)removeAcceptableStatusCode:(NSUInteger)statusCode;
+/**
+ * `NSSet` object containing the acceptable HTTP content types 
  * 
- * Default is nil, implying any content type is acceptable
+ * (http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.17)
+ * 
+ * Default is an empty set, implying any content type is acceptable
+ * 
+ * IMPORTANT: Because of the way acceptableStatusCodes posts KVO notifications
+ * and the restrictions on when it is safe to setAcceptableStatusCodes
+ * overriding the setter/getter for this property is not recommeneed.
+ * Set the property using the setter in your subclasses designated
+ * initializer or when you are creating the object.
+ * Setting acceptable status codes after the operation has been
+ * enqueued is not considered safe.
  * 
  * @see cancelOnContentTypeError
  */
 @property (copy, readwrite) NSSet *acceptableContentTypes;
 /**
- Returns an `NSSet` object containing the acceptable HTTP content type (http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.17)
- 
- By default, this is nil, implying any content type is acceptable
+ * 
  */
-+ (NSSet *)defaultAcceptableContentTypes;
+- (void)addAcceptableContentType:(NSString *)contentType;
+/**
+ * 
+ */
+- (void)removeAcceptableContentType:(NSString *)contentType;
 /**
  * Determines is NSURLConnection will cancel on -connection:didReceiveResponse: is responses status code is not in acceptableStatusCodes
  * 
