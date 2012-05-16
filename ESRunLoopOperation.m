@@ -25,7 +25,7 @@
 	{
 		NSAssert((_state == kESOperationStateInited), @"Operation initialized with invalid state: %d", _state);
 		if (_state != kESOperationStateInited)
-			self = nil;
+			return nil;
 		lock = [[NSRecursiveLock alloc] init];
 	}
     return self;
