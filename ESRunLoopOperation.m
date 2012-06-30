@@ -89,7 +89,7 @@
 	// should be no redundant changes to the state (that is, newState must never be 
 	// equal to _state).
 	
-	NSAssert((newState > _state), @"Invalid state transition from %d to %d");
+	NSAssert((newState > _state), @"Invalid state transition from %d to %d", _state, newState);
 	
 	// Transitions from executing to finished must be done on the run loop thread.
 	
