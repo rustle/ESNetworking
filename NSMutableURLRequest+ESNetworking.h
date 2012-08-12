@@ -23,6 +23,6 @@
 
 + (NSString *)urlEncodeString:(NSString *)string;
 + (NSData *)HTTPBodyWithDictionary:(NSDictionary *)body;
-+ (NSMutableURLRequest *)postRequestWithURL:(NSURL *)url body:(NSDictionary *)body;
++ (instancetype)postRequestWithURL:(NSURL *)url body:(NSDictionary *)body;
 
 @end

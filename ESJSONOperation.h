@@ -31,8 +31,7 @@ typedef void (^ESJSONOperationFailureBlock)(ESJSONOperation *op);
  
  @return A new JSON request operation
  */
-+ (id)newJSONOperationWithRequest:(NSURLRequest *)urlRequest                
-						  success:(ESJSONOperationSuccessBlock)success;
++ (instancetype)newJSONOperationWithRequest:(NSURLRequest *)urlRequest success:(ESJSONOperationSuccessBlock)success;
 
 /**
  Creates and returns an `ESJSONOperation` object and sets the specified success and failure callbacks.
@@ -51,9 +50,7 @@ typedef void (^ESJSONOperationFailureBlock)(ESJSONOperation *op);
  
  @return A new JSON request operation
  */
-+ (id)newJSONOperationWithRequest:(NSURLRequest *)urlRequest 
-						  success:(ESJSONOperationSuccessBlock)success
-						  failure:(ESJSONOperationFailureBlock)failure;
++ (instancetype)newJSONOperationWithRequest:(NSURLRequest *)urlRequest success:(ESJSONOperationSuccessBlock)success failure:(ESJSONOperationFailureBlock)failure;
 
 ///----------------------------------
 /// @name Getting Default HTTP Values

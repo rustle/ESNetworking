@@ -39,7 +39,7 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
  
  @return A new HTTP request operation
  */
-+ (id)newHTTPOperationWithRequest:(NSURLRequest *)request work:(ESHTTPOperationWorkBlock)work completion:(ESHTTPOperationCompletionBlock)completion;
++ (instancetype)newHTTPOperationWithRequest:(NSURLRequest *)request work:(ESHTTPOperationWorkBlock)work completion:(ESHTTPOperationCompletionBlock)completion;
 
 /**
  Creates and returns an `ESHTTPOperation` object and sets the specified work and completion callbacks.
@@ -54,7 +54,7 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
  
  @return An initialized HTTP request operation
  */
-- (id)initWithRequest:(NSURLRequest *)request work:(ESHTTPOperationWorkBlock)work completion:(ESHTTPOperationCompletionBlock)completion; // designated initializer
+- (instancetype)initWithRequest:(NSURLRequest *)request work:(ESHTTPOperationWorkBlock)work completion:(ESHTTPOperationCompletionBlock)completion; // designated initializer
 
 ///-------------------------
 /// @name Configured at init

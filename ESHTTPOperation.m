@@ -1,12 +1,20 @@
 #import "ESHTTPOperation.h"
 #import <libkern/OSAtomic.h>
 
+#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 60000 || MAC_OS_X_VERSION_MIN_REQUIRED >= 1080
+#define es_dispatch_release(dispatch_object) 
+#define es_dispatch_retain(dispatch_object)
+#else
+#define es_dispatch_release(dispatch_object) dispatch_release(dispatch_object)
+#define es_dispatch_retain(dispatch_object) dispatch_retain(dispatch_object)
+#endif
+
 static dispatch_queue_t _processingQueue;
 dispatch_queue_t dispatch_get_processing_queue(void)
 {
 	static dispatch_once_t onceToken;
 	dispatch_once(&onceToken, ^{
-		_processingQueue = dispatch_queue_create("com.everythingsolution.processingqueue", DISPATCH_QUEUE_CONCURRENT);
+		_processingQueue = dispatch_queue_create("com.es.processing_queue", DISPATCH_QUEUE_CONCURRENT);
 	});
 	return _processingQueue;
 }
@@ -32,23 +40,8 @@ NSString * kESHTTPOperationErrorDomain = @"ESHTTPOperationErrorDomain";
 @implementation ESHTTPOperation
 @synthesize request=_request;
 @synthesize defaultResponseSize=_defaultResponseSize;
-@synthesize lastRequest=_lastRequest;
-@synthesize lastResponse=_lastResponse;
-@synthesize responseBody=_responseBody;
-@synthesize processedResponse=_processedResponse;
-@synthesize connection=_connection;
-@synthesize firstData=_firstData;
-@synthesize dataAccumulator=_dataAccumulator;
-@synthesize outputStream=_outputStream;
 @synthesize maximumResponseSize=_maximumResponseSize;
-@synthesize completion=_completion;
-@synthesize work=_work;
-@synthesize uploadProgress=_uploadProgress;
-@synthesize downloadProgress=_downloadProgress;
-@synthesize operationID=_operationID;
-@synthesize cancelOnStatusCodeError=_cancelOnStatusCodeError;
-@synthesize cancelOnContentTypeError=_cancelOnContentTypeError;
-@synthesize totalBytesWritten=_totalBytesWritten;
+@synthesize outputStream=_outputStream;
 
 static NSThread *_networkRunLoopThread = nil;
 
@@ -92,12 +85,12 @@ static int32_t GetOperationID(void)
 
 #pragma mark - Init / Dealloc
 
-+ (id)newHTTPOperationWithRequest:(NSURLRequest *)request work:(ESHTTPOperationWorkBlock)work completion:(ESHTTPOperationCompletionBlock)completion
++ (instancetype)newHTTPOperationWithRequest:(NSURLRequest *)request work:(ESHTTPOperationWorkBlock)work completion:(ESHTTPOperationCompletionBlock)completion
 {
 	return [[[self class] alloc] initWithRequest:request work:(ESHTTPOperationWorkBlock)work completion:completion];
 }
 
-- (id)initWithRequest:(NSURLRequest *)request work:(ESHTTPOperationWorkBlock)work completion:(ESHTTPOperationCompletionBlock)completion
+- (instancetype)initWithRequest:(NSURLRequest *)request work:(ESHTTPOperationWorkBlock)work completion:(ESHTTPOperationCompletionBlock)completion
 // See comment in header.
 {
 	// any thread
@@ -128,7 +121,7 @@ static int32_t GetOperationID(void)
 {
 	//cancel connection / close outputstream?
 	if (_completionQueue != NULL)
-		dispatch_release(_completionQueue);
+		es_dispatch_release(_completionQueue);
 }
 
 #pragma mark - Completion Queue
@@ -142,13 +135,19 @@ static int32_t GetOperationID(void)
 
 - (void)setCompletionQueue:(dispatch_queue_t)completionQueue
 {
-	if (completionQueue != _completionQueue)
+	if (self.state != kESOperationStateInited)
+		[NSException raise:@"Set Request in Invalid State"
+					format:@"Attempted to setRequest while in state: %d. Request may only be set prior to queueing operation", self.state];
+	else
 	{
-		if (_completionQueue != NULL)
-			dispatch_release(_completionQueue);
-		if (completionQueue != NULL)
-			dispatch_retain(completionQueue);
-		_completionQueue = completionQueue;
+		if (completionQueue != _completionQueue)
+		{
+			if (_completionQueue != NULL)
+				es_dispatch_release(_completionQueue);
+			if (completionQueue != NULL)
+				es_dispatch_retain(completionQueue);
+			_completionQueue = completionQueue;
+		}
 	}
 }
 

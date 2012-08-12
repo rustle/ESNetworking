@@ -20,8 +20,8 @@ typedef enum ESOperationState ESOperationState;
 // IMPORTANT: Do not change these after queuing the operation; it's very likely that 
 // bad things will happen if you do.
 
-@property (strong, readwrite) NSThread *runLoopThread; // default is nil, implying main thread
-@property (copy, readwrite) NSSet *runLoopModes; // default is nil, implying set containing NSDefaultRunLoopMode
+@property NSThread *runLoopThread; // default is nil, implying main thread
+@property (copy) NSSet *runLoopModes; // default is nil, implying set containing NSDefaultRunLoopMode
 
 ///-----------------------------
 /// @name Valid after completion
@@ -33,9 +33,9 @@ typedef enum ESOperationState ESOperationState;
 /// @name Operation state
 ///----------------------
 
-@property (assign, readonly) ESOperationState state;
-@property (strong, readonly) NSThread *actualRunLoopThread; // main thread if runLoopThread is nil, runLoopThread otherwise
-@property (assign, readonly) BOOL isActualRunLoopThread; // YES if the current thread is the actual run loop thread
+@property (readonly) ESOperationState state;
+@property (readonly) NSThread *actualRunLoopThread; // main thread if runLoopThread is nil, runLoopThread otherwise
+@property (readonly) BOOL isActualRunLoopThread; // YES if the current thread is the actual run loop thread
 @property (copy, readonly) NSSet *actualRunLoopModes; // set containing NSDefaultRunLoopMode if runLoopModes is nil or empty, runLoopModes otherwise
 
 @end

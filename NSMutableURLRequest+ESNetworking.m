@@ -90,7 +90,7 @@
 //	return (NSData *)postBody;
 //}
 
-+ (NSMutableURLRequest *)postRequestWithURL:(NSURL *)url body:(NSDictionary *)body
++ (instancetype)postRequestWithURL:(NSURL *)url body:(NSDictionary *)body
 {
 	if (url == nil)
 		return nil;

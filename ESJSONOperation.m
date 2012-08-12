@@ -21,15 +21,12 @@
 
 @implementation ESJSONOperation
 
-+ (id)newJSONOperationWithRequest:(NSURLRequest *)urlRequest				   
-						  success:(ESJSONOperationSuccessBlock)success
++ (instancetype)newJSONOperationWithRequest:(NSURLRequest *)urlRequest success:(ESJSONOperationSuccessBlock)success
 {
 	return [self newJSONOperationWithRequest:urlRequest success:success failure:nil];
 }
 
-+ (id)newJSONOperationWithRequest:(NSURLRequest *)urlRequest 
-						  success:(ESJSONOperationSuccessBlock)success
-						  failure:(ESJSONOperationFailureBlock)failure
++ (instancetype)newJSONOperationWithRequest:(NSURLRequest *)urlRequest success:(ESJSONOperationSuccessBlock)success failure:(ESJSONOperationFailureBlock)failure
 {	 
 	ESJSONOperation *op = 
 	[[[self class] alloc] initWithRequest:urlRequest 

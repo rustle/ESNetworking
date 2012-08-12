@@ -1,21 +1,16 @@
 #import "ESRunLoopOperation.h"
-//#import <libkern/OSAtomic.h>
 
 @interface ESRunLoopOperation ()
 // read/write versions of public properties
-@property (assign, readwrite) ESOperationState state;
-@property (copy, readwrite) NSError *error;
+//@property ESOperationState state;
+@property (copy) NSError *error;
 @end
 
 @implementation ESRunLoopOperation
 {
 @private
-	NSRecursiveLock *lock;
+	NSRecursiveLock *_stateLock;
 }
-
-@synthesize runLoopThread=_runLoopThread;
-@synthesize runLoopModes=_runLoopModes;
-@synthesize error=_error;
 @synthesize state=_state;
 
 - (id)init
@@ -26,7 +21,7 @@
 		NSAssert((_state == kESOperationStateInited), @"Operation initialized with invalid state: %d", _state);
 		if (_state != kESOperationStateInited)
 			return nil;
-		lock = [[NSRecursiveLock alloc] init];
+		_stateLock = [[NSRecursiveLock alloc] init];
 	}
     return self;
 }
@@ -70,9 +65,9 @@
 - (ESOperationState)state
 {
 	ESOperationState state;
-	[lock lock];
+	[_stateLock lock];
 	state = _state;
-	[lock unlock];
+	[_stateLock unlock];
     return state;
 }
 
@@ -81,7 +76,7 @@
 {
     // any thread
 	
-	[lock lock];
+	[_stateLock lock];
 	
 	ESOperationState oldState;
 	
@@ -110,7 +105,7 @@
 	if ((newState == kESOperationStateExecuting) || (oldState == kESOperationStateExecuting))
 		[self didChangeValueForKey:@"isExecuting"];
 	
-	[lock unlock];
+	[_stateLock unlock];
 }
 
 - (void)startOnRunLoopThread
