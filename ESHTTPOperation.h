@@ -81,7 +81,7 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
  
 	typedef id<NSObject> (^ESHTTPOperationWorkBlock)(ESHTTPOperation *op, NSError **error);
  */
-@property (copy, readonly) ESHTTPOperationWorkBlock work;
+@property (copy, nonatomic, readonly) ESHTTPOperationWorkBlock work;
 /**
  Block that accepts completed operation and is dispatched on main queue
  
@@ -89,7 +89,7 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
  
 	typedef void (^ESHTTPOperationCompletionBlock)(ESHTTPOperation *op);
  */
-@property (copy, readonly) ESHTTPOperationCompletionBlock completion;
+@property (copy, nonatomic, readonly) ESHTTPOperationCompletionBlock completion;
 @property (assign, readonly) NSInteger operationID;
 
 /**

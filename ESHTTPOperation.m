@@ -32,6 +32,8 @@ NSString * kESHTTPOperationErrorDomain = @"ESHTTPOperationErrorDomain";
 }
 + (void)networkRunLoopThreadEntry;
 + (NSThread *)networkRunLoopThread;
+@property (copy, nonatomic) ESHTTPOperationWorkBlock work;
+@property (copy, nonatomic) ESHTTPOperationCompletionBlock completion;
 @property (copy, nonatomic) ESHTTPOperationUploadBlock uploadProgress;
 @property (copy, nonatomic) ESHTTPOperationDownloadBlock downloadProgress;
 - (void)processRequest:(NSError *)error;
@@ -220,6 +222,10 @@ static int32_t GetOperationID(void)
 	{
 		dispatch_async(self.completionQueue, ^{
 			self.completion(self);
+			self.completion = nil;
+			self.work = nil;
+			self.uploadProgress = nil;
+			self.downloadProgress = nil;
 		});
 	}
 }
