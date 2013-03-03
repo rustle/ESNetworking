@@ -33,7 +33,7 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
  
 	typedef void (^ESHTTPOperationCompletionBlock)(ESHTTPOperation *op);
  
- @param urlRequest The request object to be loaded asynchronously during execution of the operation
+ @param request The request object to be loaded asynchronously during execution of the operation
  @param work ESHTTPOperationWorkBlock that will be dispatched on shared processing queue
  @param completion ESHTTPOperationCompletionBlock that will be dispatched on main queue
  
@@ -48,7 +48,7 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
  
 	typedef void (^ESHTTPOperationCompletionBlock)(ESHTTPOperation *op);
  
- @param urlRequest The request object to be loaded asynchronously during execution of the operation
+ @param request The request object to be loaded asynchronously during execution of the operation
  @param work ESHTTPOperationWorkBlock that will be dispatched on shared processing queue
  @param completion ESHTTPOperationCompletionBlock that will be dispatched on main queue
  

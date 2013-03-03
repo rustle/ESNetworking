@@ -30,7 +30,7 @@ NSString * kESHTTPOperationErrorDomain = @"ESHTTPOperationErrorDomain";
 	NSMutableSet *_acceptableContentTypes;
 	NSRecursiveLock *_acceptableContentTypesLock;
 }
-+ (void)networkRunLoopThreadEntry;
++ (void)networkRunLoopThreadEntry __attribute__ ((noreturn));
 + (NSThread *)networkRunLoopThread;
 @property (copy, nonatomic) ESHTTPOperationWorkBlock work;
 @property (copy, nonatomic) ESHTTPOperationCompletionBlock completion;
@@ -203,7 +203,7 @@ static int32_t GetOperationID(void)
 			id result;
 			result = self.work(self, &error);
 			if (!error && result)
-				_processedResponse = result;
+				self->_processedResponse = result;
 			if (self.state == kESOperationStateExecuting)
 				[self performSelector:@selector(finishWithError:) 
 							 onThread:self.actualRunLoopThread 
@@ -237,7 +237,9 @@ static int32_t GetOperationID(void)
 {
 	NSParameterAssert(self.isActualRunLoopThread);
 	NSParameterAssert(connection == self.connection);
+#if defined(NS_BLOCK_ASSERTIONS)
 #pragma unused(connection)
+#endif
 	NSParameterAssert( (response == nil) || [response isKindOfClass:[NSHTTPURLResponse class]] );
 	self.lastRequest = request;
 	self.lastResponse = (NSHTTPURLResponse *)response;
@@ -249,7 +251,9 @@ static int32_t GetOperationID(void)
 {
 	NSParameterAssert(self.isActualRunLoopThread);
 	NSParameterAssert(connection == self.connection);
+#if defined(NS_BLOCK_ASSERTIONS)
 #pragma unused(connection)
+#endif
 	NSParameterAssert([response isKindOfClass:[NSHTTPURLResponse class]]);
 	self.totalBytesWritten = 0;
 	self.lastResponse = (NSHTTPURLResponse *)response;
@@ -282,7 +286,9 @@ static int32_t GetOperationID(void)
 	BOOL success;
 	NSParameterAssert(self.isActualRunLoopThread);
 	NSParameterAssert(connection == self.connection);
+#if defined(NS_BLOCK_ASSERTIONS)
 #pragma unused(connection)
+#endif
 	NSParameterAssert(data != nil);
 	// If we don't yet have a destination for the data, calculate one.	Note that, even
 	// if there is an output stream, we don't use it for error responses.
@@ -383,7 +389,9 @@ static int32_t GetOperationID(void)
 {
 	NSParameterAssert(self.isActualRunLoopThread);
 	NSParameterAssert(connection == self.connection);
+#if defined(NS_BLOCK_ASSERTIONS)
 #pragma unused(connection)
+#endif
 	NSParameterAssert(self.lastResponse != nil);
 	// Swap the data accumulator over to the response data so that we don't trigger a copy.
 	NSParameterAssert(_responseBody == nil);
@@ -422,7 +430,9 @@ static int32_t GetOperationID(void)
 {
 	NSParameterAssert(self.isActualRunLoopThread);
 	NSParameterAssert(connection == self.connection);
+#if defined(NS_BLOCK_ASSERTIONS)
 #pragma unused(connection)
+#endif
 	NSParameterAssert(error != nil);
 	[self processRequest:error];
 }
