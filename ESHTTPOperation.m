@@ -203,7 +203,7 @@ static int32_t GetOperationID(void)
 			id result;
 			result = self.work(self, &error);
 			if (!error && result)
-				_processedResponse = result;
+				self->_processedResponse = result;
 			if (self.state == kESOperationStateExecuting)
 				[self performSelector:@selector(finishWithError:) 
 							 onThread:self.actualRunLoopThread 
