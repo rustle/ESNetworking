@@ -30,7 +30,7 @@ NSString * kESHTTPOperationErrorDomain = @"ESHTTPOperationErrorDomain";
 	NSMutableSet *_acceptableContentTypes;
 	NSRecursiveLock *_acceptableContentTypesLock;
 }
-+ (void)networkRunLoopThreadEntry;
++ (void)networkRunLoopThreadEntry __attribute__ ((noreturn));
 + (NSThread *)networkRunLoopThread;
 @property (copy, nonatomic) ESHTTPOperationWorkBlock work;
 @property (copy, nonatomic) ESHTTPOperationCompletionBlock completion;
