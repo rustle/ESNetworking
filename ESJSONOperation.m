@@ -44,7 +44,10 @@
 										 }
 										 id json = nil;
 										 NSError *jsonError = nil;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wassign-enum"
 										 json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+#pragma clang diagnostic pop
 										 if (jsonError)
 										 {
 											 if (error)
