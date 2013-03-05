@@ -479,7 +479,7 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 
 - (NSString *)description
 {
-	return [NSString stringWithFormat:@"<%@ : %p>\n{\n\tRequest: %@\n\tResponse: %@\n\tID: %d\n\tError: %@\n}", NSStringFromClass([self class]), self, self.request, self.lastResponse, self.operationID, self.error];
+	return [NSString stringWithFormat:@"<%@ : %p>\n{\n\tRequest: %@\n\tResponse: %@\n\tID: %d\n\tError: %@\n}", NSStringFromClass([self class]), self, self.request, self.lastResponse, (int)self.operationID, self.error];
 }
 
 + (BOOL)automaticallyNotifiesObserversOfRequest
