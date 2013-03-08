@@ -20,7 +20,7 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
  @see ESRunLoopOperation
  */
 
-@interface ESHTTPOperation : ESRunLoopOperation
+@interface ESHTTPOperation : ESRunLoopOperation <NSURLConnectionDataDelegate>
 
 ///--------------------------
 /// @name Creating Operations
