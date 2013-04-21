@@ -2,11 +2,6 @@
 #import "ESNetworkError.h"
 #import "NSMutableURLRequest+ESNetworking.h"
 
-// Shared concurrent dispatch queue for work block processing
-DISPATCH_EXPORT DISPATCH_WARN_RESULT 
-dispatch_queue_t 
-dispatch_get_processing_queue(void);
-
 @class ESHTTPOperation;
 typedef id<NSObject> (^ESHTTPOperationWorkBlock)(ESHTTPOperation *op, NSError **error);
 typedef void (^ESHTTPOperationCompletionBlock)(ESHTTPOperation *op);
@@ -90,21 +85,32 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
 	typedef void (^ESHTTPOperationCompletionBlock)(ESHTTPOperation *op);
  */
 @property (copy, nonatomic, readonly) ESHTTPOperationCompletionBlock completion;
+
+/**
+ 
+ */
 @property (assign, readonly) NSInteger operationID;
+
+///-----------------------------------------
+/// @name Configure before queuing operation
+///-----------------------------------------
 
 /**
  Queue used to call completion block, if NULL, main queue is used.
  
  Default is NULL
  */
-- (dispatch_queue_t)completionQueue;
-- (void)setCompletionQueue:(dispatch_queue_t)completionQueue;
+@property NSOperationQueue *completionQueue;
 
-///-----------------------------------------
-/// @name Configure before queuing operation
-///-----------------------------------------
+/**
+ Queue used to call work block, if NULL, private queue is used.
+ 
+ Default is NULL
+ */
+@property NSOperationQueue *workQueue;
 
 // runLoopThread and runLoopModes inherited from ESRunLoopOperation
+
 /**
  * `NSIndexSet` object containing the ranges of acceptable HTTP status codes returned by NSHTTPURLResponse
  * 
@@ -192,7 +198,7 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
  * stream synchronously.  This is fine for file and memory streams, but it would 
  * not work well for other types of streams (like a bound pair).
  */
-@property (strong, readwrite) NSOutputStream *outputStream;
+@property NSOutputStream *outputStream;
 /**
  * Used for hinting capacity on data accumulator used by connection.
  *
@@ -200,7 +206,7 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
  * 
  * Default is 1MB.
  */
-@property (assign, readwrite) NSUInteger defaultResponseSize;
+@property NSUInteger defaultResponseSize;
 /**
  * Used by connection to prevent unbounded memory consumption during download.
  * 
@@ -208,7 +214,7 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
  * 
  * Default is 4MB.
  */
-@property (assign, readwrite) NSUInteger maximumResponseSize;
+@property NSUInteger maximumResponseSize;
 
 ///--------------------------
 /// @name Response validation
@@ -217,11 +223,11 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
 /**
  * Validates that status code returned in lastResponse is contained in acceptableStatusCodes
  */
-@property (assign, readonly, getter=isStatusCodeAcceptable) BOOL statusCodeAcceptable;
+@property (readonly, getter=isStatusCodeAcceptable) BOOL statusCodeAcceptable;
 /**
  * Validates that MIMEType returned in lastResponse is contained in acceptableContentTypes
  */
-@property (assign, readonly, getter=isContentTypeAcceptable) BOOL contentTypeAcceptable;
+@property (readonly, getter=isContentTypeAcceptable) BOOL contentTypeAcceptable;
 
 ///--------------------------------------
 /// @name Response
@@ -239,11 +245,11 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
 /**
  * 
  */
-@property (strong, readonly) NSData *responseBody;
+@property (readonly) NSData *responseBody;
 /**
  * 
  */
-@property (strong, readonly) id processedResponse;
+@property (readonly) id processedResponse;
 
 ///---------------
 /// @name Progress

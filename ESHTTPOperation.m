@@ -1,34 +1,17 @@
 #import "ESHTTPOperation.h"
 #import <libkern/OSAtomic.h>
 
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 60000 || MAC_OS_X_VERSION_MIN_REQUIRED >= 1080
-#define es_dispatch_release(dispatch_object) 
-#define es_dispatch_retain(dispatch_object)
-#else
-#define es_dispatch_release(dispatch_object) dispatch_release(dispatch_object)
-#define es_dispatch_retain(dispatch_object) dispatch_retain(dispatch_object)
-#endif
-
-static dispatch_queue_t _processingQueue;
-dispatch_queue_t dispatch_get_processing_queue(void)
-{
-	static dispatch_once_t onceToken;
-	dispatch_once(&onceToken, ^{
-		_processingQueue = dispatch_queue_create("com.es.processing_queue", DISPATCH_QUEUE_CONCURRENT);
-	});
-	return _processingQueue;
-}
-
 NSString * kESHTTPOperationErrorDomain = @"ESHTTPOperationErrorDomain";
 
 @interface ESHTTPOperation ()
 {
 @private
-	dispatch_queue_t _completionQueue;
 	NSMutableIndexSet *_acceptableStatusCodes;
 	NSRecursiveLock *_acceptableStatusCodesLock;
 	NSMutableSet *_acceptableContentTypes;
 	NSRecursiveLock *_acceptableContentTypesLock;
+	NSRecursiveLock *_completionQueueLock;
+	NSRecursiveLock *_workQueueLock;
 }
 + (void)networkRunLoopThreadEntry __attribute__ ((noreturn));
 + (NSThread *)networkRunLoopThread;
@@ -36,14 +19,16 @@ NSString * kESHTTPOperationErrorDomain = @"ESHTTPOperationErrorDomain";
 @property (copy, nonatomic) ESHTTPOperationCompletionBlock completion;
 @property (copy, nonatomic) ESHTTPOperationUploadBlock uploadProgress;
 @property (copy, nonatomic) ESHTTPOperationDownloadBlock downloadProgress;
+@property id processedResponse;
 - (void)processRequest:(NSError *)error;
 @end
 
 @implementation ESHTTPOperation
-@synthesize request=_request;
 @synthesize defaultResponseSize=_defaultResponseSize;
 @synthesize maximumResponseSize=_maximumResponseSize;
 @synthesize outputStream=_outputStream;
+@synthesize completionQueue=_completionQueue;
+@synthesize workQueue=_workQueue;
 
 static NSThread *_networkRunLoopThread = nil;
 
@@ -73,7 +58,7 @@ static NSThread *_networkRunLoopThread = nil;
 		_networkRunLoopThread = [[NSThread alloc] initWithTarget:[self class] selector:@selector(networkRunLoopThreadEntry) object:nil];
 		NSParameterAssert(_networkRunLoopThread != nil);
 		[_networkRunLoopThread setThreadPriority:0.3];
-		[_networkRunLoopThread setName:@"NetworkRunLoopThread"];
+		[_networkRunLoopThread setName:@"ESNetworkingRunLoopThread"];
 		[_networkRunLoopThread start];
 	});
 	return _networkRunLoopThread;
@@ -101,9 +86,10 @@ static int32_t GetOperationID(void)
 	// Because we require an NSHTTPURLResponse, we only support HTTP and HTTPS URLs.
 	NSParameterAssert([[[[request URL] scheme] lowercaseString] isEqual:@"http"] || [[[[request URL] scheme] lowercaseString] isEqual:@"https"]);
 	self = [super init];
-	if ((request == nil) ||
-		([request URL] == nil))
+	if ((request == nil) || ([request URL] == nil))
+	{
 		self = nil;
+	}
 	if (self != nil)
 	{
 		_completion = [completion copy];
@@ -115,41 +101,87 @@ static int32_t GetOperationID(void)
 		_operationID = GetOperationID();
 		_acceptableStatusCodesLock = [NSRecursiveLock new];
 		_acceptableContentTypesLock = [NSRecursiveLock new];
+		_completionQueueLock = [NSRecursiveLock new];
+		_workQueueLock = [NSRecursiveLock new];
 	}
 	return self;
 }
 
-- (void)dealloc
+#pragma mark - State Check
+
+- (void)confirmSelectorCalledInInitStateOrThrowException:(SEL)selector
 {
-	//cancel connection / close outputstream?
-	if (_completionQueue != NULL)
-		es_dispatch_release(_completionQueue);
+	NSParameterAssert(selector);
+	ESOperationState state = self.state;
+	if (state != kESOperationStateInited)
+	{
+		[NSException raise:@"Invalid State Exception" format:@"Attempted %@ while in state: %d. May only be attempted prior to queueing operation.", NSStringFromSelector(selector), state];
+	}
 }
 
-#pragma mark - Completion Queue
+#pragma mark - Queues
 
-- (dispatch_queue_t)completionQueue
+- (NSOperationQueue *)completionQueue
 {
-	if (_completionQueue != NULL)
-		return _completionQueue;
-	return dispatch_get_main_queue();
-}
-
-- (void)setCompletionQueue:(dispatch_queue_t)completionQueue
-{
-	if (self.state != kESOperationStateInited)
-		[NSException raise:@"Set Request in Invalid State"
-					format:@"Attempted to setRequest while in state: %d. Request may only be set prior to queueing operation", self.state];
+	[_completionQueueLock lock];
+	NSOperationQueue *queue;
+	if (_completionQueue)
+	{
+		queue = _completionQueue;
+	}
 	else
 	{
-		if (completionQueue != _completionQueue)
+		queue = [NSOperationQueue mainQueue];
+	}
+	[_completionQueueLock unlock];
+	return queue;
+}
+
+- (void)setCompletionQueue:(NSOperationQueue *)completionQueue
+{
+	[self confirmSelectorCalledInInitStateOrThrowException:_cmd];
+	{
+		[_completionQueueLock lock];
+		if (_completionQueue != completionQueue)
 		{
-			if (_completionQueue != NULL)
-				es_dispatch_release(_completionQueue);
-			if (completionQueue != NULL)
-				es_dispatch_retain(completionQueue);
 			_completionQueue = completionQueue;
 		}
+		[_completionQueueLock unlock];
+	}
+}
+
+- (NSOperationQueue *)workQueue
+{
+	[_workQueueLock lock];
+	NSOperationQueue *queue;
+	if (_workQueue)
+	{
+		queue = _workQueue;
+	}
+	else
+	{
+		static NSOperationQueue *_processingQueue;
+		static dispatch_once_t onceToken;
+		dispatch_once(&onceToken, ^{
+			_processingQueue = [NSOperationQueue new];
+			_processingQueue.name = @"com.es.processing_queue";
+		});
+		queue = _processingQueue;
+	}
+	[_workQueueLock unlock];
+	return queue;
+}
+
+- (void)setWorkQueue:(NSOperationQueue *)workQueue
+{
+	[self confirmSelectorCalledInInitStateOrThrowException:_cmd];
+	{
+		[_workQueueLock lock];
+		if (_workQueue != workQueue)
+		{
+			_workQueue = workQueue;
+		}
+		[_workQueueLock unlock];
 	}
 }
 
@@ -189,30 +221,36 @@ static int32_t GetOperationID(void)
 	// have actually opened this stream but, AFAICT, closing an unopened stream
 	// doesn't hurt.
 	if (self.outputStream != nil)
+	{
 		[self.outputStream close];
+	}
 }
 
 - (void)processRequest:(NSError *)error
 {
 	if (error)
+	{
 		[self finishWithError:error];
+	}
 	else if (self.work)
 	{
-		dispatch_async(dispatch_get_processing_queue(), ^{
+		[self.workQueue addOperationWithBlock:^{
 			NSError *error = nil;
-			id result;
-			result = self.work(self, &error);
+			id result = self.work(self, &error);
 			if (!error && result)
-				self->_processedResponse = result;
+			{
+				self.processedResponse = result;
+			}
 			if (self.state == kESOperationStateExecuting)
-				[self performSelector:@selector(finishWithError:) 
-							 onThread:self.actualRunLoopThread 
-						   withObject:error 
-						waitUntilDone:NO];
-		});
+			{
+				[self performSelector:@selector(finishWithError:) onThread:self.actualRunLoopThread withObject:error waitUntilDone:NO];
+			}
+		}];
 	}
 	else
+	{
 		[self finishWithError:nil];
+	}
 }
 
 - (void)finishWithError:(NSError *)error
@@ -220,13 +258,13 @@ static int32_t GetOperationID(void)
 	[super finishWithError:error];
 	if (self.completion)
 	{
-		dispatch_async(self.completionQueue, ^{
+		[self.completionQueue addOperationWithBlock:^{
 			self.completion(self);
 			self.completion = nil;
 			self.work = nil;
 			self.uploadProgress = nil;
 			self.downloadProgress = nil;
-		});
+		}];
 	}
 }
 
@@ -259,24 +297,15 @@ static int32_t GetOperationID(void)
 	self.lastResponse = (NSHTTPURLResponse *)response;
 	if (self.cancelOnStatusCodeError && !self.isStatusCodeAcceptable)
 	{
-		NSDictionary *userInfo = 
-		[[NSDictionary alloc] initWithObjectsAndKeys:
-		 [[NSError alloc] initWithDomain:kESHTTPOperationErrorDomain code:self.lastResponse.statusCode userInfo:nil], @"underlyingError",
-		 [[NSString alloc] initWithFormat:NSLocalizedString(@"Expected status code %@, got %d", nil), self.acceptableStatusCodes, [self.lastResponse statusCode]], NSLocalizedDescriptionKey,
-		 nil];
 		[self.connection cancel];
 		self.connection = nil;
-		[self processRequest:[[NSError alloc] initWithDomain:kESHTTPOperationErrorDomain code:kESHTTPOperationErrorBadStatusCode userInfo:userInfo]];
+		[self processRequest:[self errorForStatusCode]];
 	}
 	else if (self.cancelOnContentTypeError && ![self isContentTypeAcceptable])
 	{
-		NSDictionary *userInfo = 
-		[[NSDictionary alloc] initWithObjectsAndKeys:
-		 [[NSString alloc] initWithFormat:NSLocalizedString(@"Expected content type %@, got %@", nil), self.acceptableContentTypes, [self.lastResponse MIMEType]], NSLocalizedDescriptionKey,
-		 nil];
 		[self.connection cancel];
 		self.connection = nil;
-		[self processRequest:[NSError errorWithDomain:kESHTTPOperationErrorDomain code:kESHTTPOperationErrorBadContentType userInfo:userInfo]];
+		[self processRequest:[self errorForContentType]];
 	}
 }
 
@@ -302,9 +331,13 @@ static int32_t GetOperationID(void)
 			NSParameterAssert(self.dataAccumulator == nil);
 			length = [self.lastResponse expectedContentLength];
 			if (length == NSURLResponseUnknownLength)
+			{
 				length = self.defaultResponseSize;
+			}
 			if (length <= (long long)self.maximumResponseSize)
+			{
 				self.dataAccumulator = [NSMutableData dataWithCapacity:(NSUInteger)length];
+			}
 			else
 			{
 				[self processRequest:[NSError errorWithDomain:kESHTTPOperationErrorDomain code:kESHTTPOperationErrorResponseTooLarge userInfo:nil]];
@@ -334,34 +367,37 @@ static int32_t GetOperationID(void)
 				});
 			}
 			if (([self.dataAccumulator length] + [data length]) <= self.maximumResponseSize)
+			{
 				[self.dataAccumulator appendData:data];
+			}
 			else
+			{
 				[self processRequest:[NSError errorWithDomain:kESHTTPOperationErrorDomain code:kESHTTPOperationErrorResponseTooLarge userInfo:nil]];
+			}
 		}
 		else
 		{
-			NSUInteger dataOffset;
-			NSUInteger dataLength;
-			const uint8_t *dataPtr;
-			NSError *error;
-			NSInteger bytesWritten;
-			
 			NSParameterAssert(self.outputStream != nil);
 			
-			dataOffset = 0;
-			dataLength = [data length];
-			dataPtr = [data bytes];
-			error = nil;
+			NSUInteger dataOffset = 0;
+			NSUInteger dataLength = [data length];
+			const uint8_t *dataPtr = [data bytes];
+			NSError *error = nil;
+			NSInteger bytesWritten;
 			do
 			{
 				if (dataOffset == dataLength)
+				{
 					break;
+				}
 				bytesWritten = [self.outputStream write:&dataPtr[dataOffset] maxLength:dataLength - dataOffset];
 				if (bytesWritten <= 0)
 				{
 					error = [self.outputStream streamError];
 					if (error == nil)
+					{
 						error = [NSError errorWithDomain:kESHTTPOperationErrorDomain code:kESHTTPOperationErrorOnOutputStream userInfo:nil];
+					}
 					break;
 				}
 				else
@@ -375,11 +411,13 @@ static int32_t GetOperationID(void)
 			if (self.downloadProgress) 
 			{
 				dispatch_async(dispatch_get_main_queue(), ^{
-			        self.downloadProgress(self.totalBytesWritten, (NSUInteger)[self.lastResponse expectedContentLength]);
+					self.downloadProgress(self.totalBytesWritten, (NSUInteger)[self.lastResponse expectedContentLength]);
 				});
 			}
 			if (error != nil)
+			{
 				[self processRequest:error];
+			}
 		}
 	}
 }
@@ -406,23 +444,16 @@ static int32_t GetOperationID(void)
 	}
 	if (!self.isStatusCodeAcceptable)
 	{
-		NSDictionary *userInfo = 
-		[[NSDictionary alloc] initWithObjectsAndKeys:
-		 [[NSError alloc] initWithDomain:kESHTTPOperationErrorDomain code:self.lastResponse.statusCode userInfo:nil], @"underlyingError",
-		 [[NSString alloc] initWithFormat:NSLocalizedString(@"Expected status code %@, got %d", nil), self.acceptableStatusCodes, [self.lastResponse statusCode]], NSLocalizedDescriptionKey,
-		 nil];
-		[self processRequest:[[NSError alloc] initWithDomain:kESHTTPOperationErrorDomain code:kESHTTPOperationErrorBadStatusCode userInfo:userInfo]];
+		[self processRequest:[self errorForStatusCode]];
 	}
 	else if (!self.isContentTypeAcceptable)
 	{
-		NSDictionary *userInfo = 
-		[[NSDictionary alloc] initWithObjectsAndKeys:
-		 [[NSString alloc] initWithFormat:NSLocalizedString(@"Expected content type %@, got %@", nil), self.acceptableContentTypes, [self.lastResponse MIMEType]], NSLocalizedDescriptionKey,
-		 nil];
-		[self processRequest:[NSError errorWithDomain:kESHTTPOperationErrorDomain code:kESHTTPOperationErrorBadContentType userInfo:userInfo]];
+		[self processRequest:[self errorForContentType]];
 	}
 	else
+	{
 		[self processRequest:nil];
+	}
 }
 
 - (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error
@@ -437,32 +468,31 @@ static int32_t GetOperationID(void)
 	[self processRequest:error];
 }
 
-- (void)connection:(NSURLConnection *)connection 
-   didSendBodyData:(NSInteger)bytesWritten 
- totalBytesWritten:(NSInteger)totalBytesWritten 
-totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
+- (void)connection:(NSURLConnection *)connection didSendBodyData:(NSInteger)bytesWritten totalBytesWritten:(NSInteger)totalBytesWritten totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 {
-    if (self.uploadProgress)
-        self.uploadProgress(totalBytesWritten, totalBytesExpectedToWrite);
+	if (self.uploadProgress)
+	{
+		self.uploadProgress(totalBytesWritten, totalBytesExpectedToWrite);
+	}
 }
 
-- (NSCachedURLResponse *)connection:(NSURLConnection *)connection 
-                  willCacheResponse:(NSCachedURLResponse *)cachedResponse 
+- (NSCachedURLResponse *)connection:(NSURLConnection *)connection willCacheResponse:(NSCachedURLResponse *)cachedResponse 
 {
-    if ([self isCancelled])
-        return nil;
-    
-    return cachedResponse;
+	if ([self isCancelled])
+	{
+		return nil;
+	}
+	return cachedResponse;
 }
 
 #pragma mark - Properties
 
 //	
 //	Several properties enforce state because they are nonatomic and
-//	it is preferable not to manipulate them after the operation has been
+//	it is unsafe to manipulate them after the operation has been
 //	queued.
 //	
-//	Making them atomic would mean locking that wouldn't even be
+//	Making them atomic would mean locking that wouldn't be
 //	necessary in most use cases.
 //	
 
@@ -470,11 +500,13 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 // Returns the effective run loop thread, that is, the one set by the user 
 // or, if that's not set, the network thread.
 {
-    NSThread *result;
-    result = self.runLoopThread;
-    if (result == nil)
-        result = [[self class] networkRunLoopThread];
-    return result;
+	NSThread *result;
+	result = self.runLoopThread;
+	if (result == nil)
+	{
+		result = [[self class] networkRunLoopThread];
+	}
+	return result;
 }
 
 - (NSString *)description
@@ -482,46 +514,19 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 	return [NSString stringWithFormat:@"<%@ : %p>\n{\n\tRequest: %@\n\tResponse: %@\n\tID: %d\n\tError: %@\n}", NSStringFromClass([self class]), self, self.request, self.lastResponse, self.operationID, self.error];
 }
 
-+ (BOOL)automaticallyNotifiesObserversOfRequest
-{
-	return NO;
-}
-
-- (NSURLRequest *)request
-{
-	return _request;
-}
-
-- (void)setRequest:(NSURLRequest *)newValue
-{
-	if (self.state != kESOperationStateInited)
-		[NSException raise:@"Set Request in Invalid State" 
-					format:@"Attempted to setRequest while in state: %d. Request may only be set prior to queueing operation", self.state];
-	else
-	{
-		if (newValue != _request)
-		{
-			[self willChangeValueForKey:@"request"];
-			_request = [newValue copy];
-			[self didChangeValueForKey:@"request"];
-		}
-	}
-}
-
 - (void)setUploadProgressBlock:(ESHTTPOperationUploadBlock)uploadProgress
 {
 	if (self.state != kESOperationStateInited)
-		[NSException raise:@"Set Upload Progress Block in Invalid State" 
-					format:@"Attempted to setUploadProgressBlock while in state: %d. UploadProgressBlock may only be set prior to queueing operation", self.state];
+	{
+		[NSException raise:@"Set Upload Progress Block in Invalid State" format:@"Attempted to setUploadProgressBlock while in state: %d. UploadProgressBlock may only be set prior to queueing operation", self.state];
+	}
 	self.uploadProgress = uploadProgress;
 }
 
 - (void)setDownloadProgressBlock:(ESHTTPOperationDownloadBlock)downloadProgress
 {
-	if (self.state != kESOperationStateInited)
-		[NSException raise:@"Set Download Progress Block in Invalid State" 
-					format:@"Attempted to setDownloadProgressBlock while in state: %d. DownloadProgressBlock may only be set prior to queueing operation", self.state];
-    self.downloadProgress = downloadProgress;
+	[self confirmSelectorCalledInInitStateOrThrowException:_cmd];
+	self.downloadProgress = downloadProgress;
 }
 
 + (BOOL)automaticallyNotifiesObserversOfAcceptableStatusCodes
@@ -550,24 +555,22 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 
 - (void)setAcceptableStatusCodes:(NSIndexSet *)newValue
 {
-	[_acceptableStatusCodesLock lock];
-	if (self.state != kESOperationStateInited)
-		[NSException raise:@"Set Acceptable Status Codes in Invalid State" 
-					format:@"Attempted to setAcceptableStatusCodes while in state: %d. AcceptableStatusCode may only be set prior to queueing operation", self.state];
-	else
+	[self confirmSelectorCalledInInitStateOrThrowException:_cmd];
 	{
+		[_acceptableStatusCodesLock lock];
 		if (newValue != _acceptableStatusCodes)
 		{
 			[self willChangeValueForKey:@"acceptableStatusCodes"];
 			_acceptableStatusCodes = [newValue mutableCopy];
 			[self didChangeValueForKey:@"acceptableStatusCodes"];
 		}
+		[_acceptableStatusCodesLock unlock];
 	}
-	[_acceptableStatusCodesLock unlock];
 }
 
 - (void)addAcceptableStatusCode:(NSUInteger)statusCode
 {
+	[self confirmSelectorCalledInInitStateOrThrowException:_cmd];
 	[_acceptableStatusCodesLock lock];
 	NSMutableIndexSet *statusCodes = (NSMutableIndexSet *)self.acceptableStatusCodes;
 	[statusCodes addIndex:statusCode];
@@ -576,6 +579,7 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 
 - (void)removeAcceptableStatusCode:(NSUInteger)statusCode
 {
+	[self confirmSelectorCalledInInitStateOrThrowException:_cmd];
 	[_acceptableStatusCodesLock lock];
 	NSMutableIndexSet *statusCodes = (NSMutableIndexSet *)self.acceptableStatusCodes;
 	[statusCodes removeIndex:statusCode];
@@ -608,26 +612,26 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 
 - (void)setAcceptableContentTypes:(NSSet *)newValue
 {
-	[_acceptableContentTypesLock lock];
-	if (self.state != kESOperationStateInited)
-		[NSException raise:@"Set Acceptable Content Types in Invalid State" 
-					format:@"Attempted to setAcceptableContentTypes while in state: %d. Acceptable Content Types may only be set prior to queueing operation", self.state];
-	else
+	[self confirmSelectorCalledInInitStateOrThrowException:_cmd];
 	{
+		[_acceptableContentTypesLock lock];
 		if (newValue != _acceptableContentTypes)
 		{
 			[self willChangeValueForKey:@"acceptableContentTypes"];
 			_acceptableContentTypes = [newValue copy];
 			[self didChangeValueForKey:@"acceptableContentTypes"];
 		}
+		[_acceptableContentTypesLock unlock];
 	}
-	[_acceptableContentTypesLock unlock];
 }
 
 - (void)addAcceptableContentType:(NSString *)contentType
 {
+	[self confirmSelectorCalledInInitStateOrThrowException:_cmd];
 	if (contentType == nil)
+	{
 		return;
+	}
 	[_acceptableContentTypesLock lock];
 	NSMutableSet *acceptableContentType = (NSMutableSet *)self.acceptableContentTypes;
 	[acceptableContentType addObject:contentType];
@@ -636,8 +640,11 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 
 - (void)removeAcceptableContentType:(NSString *)contentType
 {
+	[self confirmSelectorCalledInInitStateOrThrowException:_cmd];
 	if (contentType == nil)
+	{
 		return;
+	}
 	[_acceptableContentTypesLock lock];
 	NSMutableSet *acceptableContentType = (NSMutableSet *)self.acceptableContentTypes;
 	[acceptableContentType removeObject:contentType];
@@ -748,6 +755,27 @@ totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 	contentType = [self.lastResponse MIMEType];
 	NSSet *acceptableContentTypes = self.acceptableContentTypes;
 	return ((acceptableContentTypes == nil) || (acceptableContentTypes.count == 0) || ((contentType != nil) && [acceptableContentTypes containsObject:contentType]));
+}
+
+#pragma mark - Errors
+
+- (NSError *)errorForStatusCode
+{
+	NSDictionary *userInfo = @{
+		NSUnderlyingErrorKey : [NSError errorWithDomain:kESHTTPOperationErrorDomain code:self.lastResponse.statusCode userInfo:nil],
+		NSLocalizedDescriptionKey : [NSString stringWithFormat:NSLocalizedString(@"Expected status code in set %@, got %ld", nil), self.acceptableStatusCodes, (long)[self.lastResponse statusCode]],
+	};
+	NSError *error = [NSError errorWithDomain:kESHTTPOperationErrorDomain code:kESHTTPOperationErrorBadStatusCode userInfo:userInfo];
+	return error;
+}
+
+- (NSError *)errorForContentType
+{
+	NSDictionary *userInfo = @{
+		NSLocalizedDescriptionKey : [NSString stringWithFormat:NSLocalizedString(@"Expected content type in set %@, got %@", nil), self.acceptableContentTypes, [self.lastResponse MIMEType]],
+	};
+	NSError *error = [NSError errorWithDomain:kESHTTPOperationErrorDomain code:kESHTTPOperationErrorBadContentType userInfo:userInfo];
+	return error;
 }
 
 @end
