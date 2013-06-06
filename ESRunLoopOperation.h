@@ -60,12 +60,15 @@ typedef enum ESOperationState ESOperationState;
 
 // Support methods
 
-// A subclass should call finishWithError: when the operation is complete, passing nil 
+// A subclass should call -finishWithError: when the operation is complete, passing nil 
 // for no error and an error otherwise.  It must call this on the actual run loop thread. 
+// 
+// Return value indicates that -finishWithError: was called successfully prior to operation finishing.
+// Subclasses that override -finishWithError: should honor return value and not continue.
 // 
 // Note that this will call -operationWillFinish before returning.
 
-- (void)finishWithError:(NSError *)error;
+- (BOOL)finishWithError:(NSError *)error;
 
 - (void)setError:(NSError *)error;
 

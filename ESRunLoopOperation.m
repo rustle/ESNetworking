@@ -146,17 +146,22 @@
         [self finishWithError:[NSError errorWithDomain:NSCocoaErrorDomain code:NSUserCancelledError userInfo:nil]];
 }
 
-- (void)finishWithError:(NSError *)error
+- (BOOL)finishWithError:(NSError *)error
 {
 	NSAssert(self.isActualRunLoopThread, @"Entered finishWithError from non run loop thread");
 	// If we got canceled and finished waiting for this to get scheduled, bail
 	if (self.state != kESOperationStateExecuting)
-		return;
+	{
+		return NO;
+	}
     // error may be nil
     if (self.error == nil)
-        self.error = error;
+	{
+		self.error = error;
+	}
     [self operationWillFinish];
     self.state = kESOperationStateFinished;
+	return YES;
 }
 
 #pragma mark * Subclass override points

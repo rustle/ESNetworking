@@ -253,19 +253,31 @@ static int32_t GetOperationID(void)
 	}
 }
 
-- (void)finishWithError:(NSError *)error
+- (BOOL)finishWithError:(NSError *)error
 {
-	[super finishWithError:error];
-	if (self.completion)
+	if (![super finishWithError:error])
+	{
+		return NO;
+	}
+	void (^cleanup)(void) = ^{
+		self.completion = nil;
+		self.work = nil;
+		self.uploadProgress = nil;
+		self.downloadProgress = nil;
+	};
+	ESHTTPOperationCompletionBlock completion = self.completion;
+	if (completion)
 	{
 		[self.completionQueue addOperationWithBlock:^{
-			self.completion(self);
-			self.completion = nil;
-			self.work = nil;
-			self.uploadProgress = nil;
-			self.downloadProgress = nil;
+			completion(self);
+			cleanup();
 		}];
 	}
+	else
+	{
+		cleanup();
+	}
+	return YES;
 }
 
 #pragma mark - NSURLConnection Delegate
