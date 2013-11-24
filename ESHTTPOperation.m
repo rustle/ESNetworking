@@ -372,10 +372,13 @@ static int32_t GetOperationID(void)
 	{
 		if (self.dataAccumulator != nil)
 		{
-			if (self.downloadProgress)
+			ESHTTPOperationDownloadBlock downloadProgress = self.downloadProgress;
+			if (downloadProgress)
 			{
+				NSUInteger totalBytes = [self.dataAccumulator length] + [data length];
+				NSUInteger totalBytesExpected = (NSUInteger)[self.lastResponse expectedContentLength];
 				dispatch_async(dispatch_get_main_queue(), ^{
-					self.downloadProgress([self.dataAccumulator length] + [data length], (NSUInteger)[self.lastResponse expectedContentLength]);
+					downloadProgress(totalBytes, totalBytesExpected);
 				});
 			}
 			if (([self.dataAccumulator length] + [data length]) <= self.maximumResponseSize)
@@ -420,10 +423,13 @@ static int32_t GetOperationID(void)
 			}
 			while (YES);
 			
-			if (self.downloadProgress) 
+			ESHTTPOperationDownloadBlock downloadProgress = self.downloadProgress;
+			if (downloadProgress) 
 			{
+				NSUInteger totalBytes = self.totalBytesWritten;
+				NSUInteger totalBytesExpected = (NSUInteger)[self.lastResponse expectedContentLength];
 				dispatch_async(dispatch_get_main_queue(), ^{
-					self.downloadProgress(self.totalBytesWritten, (NSUInteger)[self.lastResponse expectedContentLength]);
+					downloadProgress(totalBytes, totalBytesExpected);
 				});
 			}
 			if (error != nil)
@@ -482,9 +488,12 @@ static int32_t GetOperationID(void)
 
 - (void)connection:(NSURLConnection *)connection didSendBodyData:(NSInteger)bytesWritten totalBytesWritten:(NSInteger)totalBytesWritten totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite
 {
-	if (self.uploadProgress)
+	ESHTTPOperationUploadBlock uploadProgress = self.uploadProgress;
+	if (uploadProgress)
 	{
-		self.uploadProgress(totalBytesWritten, totalBytesExpectedToWrite);
+		dispatch_async(dispatch_get_main_queue(), ^{
+			uploadProgress(totalBytesWritten, totalBytesExpectedToWrite);
+		});
 	}
 }
 
