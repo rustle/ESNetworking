@@ -18,8 +18,58 @@
 //	
 
 #import "ESJSONOperation.h"
+#import "ESJSONOperationDeprecated.h"
 
 @implementation ESJSONOperation
+
++ (instancetype)newJSONOperationWithRequest:(NSURLRequest *)urlRequest completion:(ESHTTPOperationCompletionBlock)completion
+{
+	id work = ^id<NSObject>(ESHTTPOperation *op, NSError *__autoreleasing *error) {
+		if (op.error)
+		{
+			if (error)
+			{
+				*error = op.error;
+			}
+			return nil;
+		}
+		NSData *data = op.responseBody;
+		if ([data length] == 0) 
+		{
+			return nil;
+		}
+		id json = nil;
+		NSError *jsonError = nil;
+		json = [NSJSONSerialization JSONObjectWithData:data options:(NSJSONReadingOptions)0 error:&jsonError];
+		if (jsonError)
+		{
+			if (error)
+			{
+				*error = jsonError;
+			}
+			return nil;
+		}
+		return json;
+	};
+	ESJSONOperation *op = [[[self class] alloc] initWithRequest:urlRequest work:work completion:completion];
+	return op;
+}
+
++ (NSSet *)defaultAcceptableContentTypes 
+{
+	return [NSSet setWithObjects:
+			@"application/json", 
+			@"application/x-javascript", 
+			@"text/javascript", 
+			@"text/x-javascript", 
+			@"text/x-json", 
+			@"text/json", 
+			@"text/plain", nil];
+}
+
+@end
+
+@implementation ESJSONOperation (Deprecated)
 
 + (instancetype)newJSONOperationWithRequest:(NSURLRequest *)urlRequest success:(ESJSONOperationSuccessBlock)success
 {
@@ -34,7 +84,9 @@
 										 if (op.error)
 										 {
 											 if (error)
+											 {
 												 *error = op.error;
+											 }
 											 return nil;
 										 }
 										 NSData *data = op.responseBody;
@@ -44,14 +96,13 @@
 										 }
 										 id json = nil;
 										 NSError *jsonError = nil;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wassign-enum"
-										 json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
-#pragma clang diagnostic pop
+										 json = [NSJSONSerialization JSONObjectWithData:data options:(NSJSONReadingOptions)0 error:&jsonError];
 										 if (jsonError)
 										 {
 											 if (error)
+											 {
 												 *error = jsonError;
+											 }
 											 return nil;
 										 }
 										 return json;
@@ -75,18 +126,6 @@
 								   }
 							   }];
 	return op;
-}
-
-+ (NSSet *)defaultAcceptableContentTypes 
-{
-	return [NSSet setWithObjects:
-			@"application/json", 
-			@"application/x-javascript", 
-			@"text/javascript", 
-			@"text/x-javascript", 
-			@"text/x-json", 
-			@"text/json", 
-			@"text/plain", nil];
 }
 
 @end
