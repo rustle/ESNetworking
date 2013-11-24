@@ -17,6 +17,7 @@ NSString * kESHTTPOperationErrorDomain = @"ESHTTPOperationErrorDomain";
 + (NSThread *)networkRunLoopThread;
 @property (copy, nonatomic) ESHTTPOperationWorkBlock work;
 @property (copy, nonatomic) ESHTTPOperationCompletionBlock completion;
+@property (nonatomic) NSBlockOperation *completionBlockOperation;
 @property (copy, nonatomic) ESHTTPOperationUploadBlock uploadProgress;
 @property (copy, nonatomic) ESHTTPOperationDownloadBlock downloadProgress;
 @property id processedResponse;
@@ -224,6 +225,30 @@ static int32_t GetOperationID(void)
 	{
 		[self.outputStream close];
 	}
+	NSBlockOperation *finishOperation = [NSBlockOperation new];
+	ESHTTPOperationCompletionBlock completion = self.completion;
+	void (^cleanupBlocks)(void) = ^{
+		self.completion = nil;
+		self.work = nil;
+		self.uploadProgress = nil;
+		self.downloadProgress = nil;
+	};
+	[finishOperation addExecutionBlock:^{
+		if (completion)
+		{
+			completion(self);
+		}
+		cleanupBlocks();
+	}];
+	self.completionBlockOperation = finishOperation;
+	// Use a dependant operation to handle the case
+	// Where someone is waiting on the network queue
+	// and completion queue waitUntilAllOperationsAreFinished
+	// and scheduling completion after finishing creates a race
+	// https://github.com/rustle/ESNetworking/issues/5
+	NSOperation *dependantOperation = [NSOperation new];
+	[dependantOperation addDependency:finishOperation];
+	[self.completionQueue addOperation:dependantOperation];
 }
 
 - (void)processRequest:(NSError *)error
@@ -255,28 +280,16 @@ static int32_t GetOperationID(void)
 
 - (BOOL)finishWithError:(NSError *)error
 {
+	NSParameterAssert(self.isActualRunLoopThread);
 	if (![super finishWithError:error])
 	{
 		return NO;
 	}
-	void (^cleanup)(void) = ^{
-		self.completion = nil;
-		self.work = nil;
-		self.uploadProgress = nil;
-		self.downloadProgress = nil;
-	};
-	ESHTTPOperationCompletionBlock completion = self.completion;
-	if (completion)
-	{
-		[self.completionQueue addOperationWithBlock:^{
-			completion(self);
-			cleanup();
-		}];
-	}
-	else
-	{
-		cleanup();
-	}
+	NSBlockOperation *finishOperation = self.completionBlockOperation;
+	// completionBlockOperation should always be set up by operationWillFinish
+	NSParameterAssert(finishOperation);
+	[self.completionQueue addOperation:finishOperation];
+	self.completionBlockOperation = nil;
 	return YES;
 }
 
