@@ -30,7 +30,7 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
  
  @param request The request object to be loaded asynchronously during execution of the operation
  @param work ESHTTPOperationWorkBlock that will be dispatched on shared processing queue
- @param completion ESHTTPOperationCompletionBlock that will be dispatched on main queue
+ @param completion ESHTTPOperationCompletionBlock that will be dispatched on completionQueue
  
  @return A new HTTP request operation
  */
@@ -45,7 +45,7 @@ typedef void (^ESHTTPOperationDownloadBlock)(NSUInteger totalBytesRead, NSUInteg
  
  @param request The request object to be loaded asynchronously during execution of the operation
  @param work ESHTTPOperationWorkBlock that will be dispatched on shared processing queue
- @param completion ESHTTPOperationCompletionBlock that will be dispatched on main queue
+ @param completion ESHTTPOperationCompletionBlock that will be dispatched on completionQueue
  
  @return An initialized HTTP request operation
  */
