@@ -17,7 +17,6 @@ NSString * kESHTTPOperationErrorDomain = @"ESHTTPOperationErrorDomain";
 + (NSThread *)networkRunLoopThread;
 @property (copy, nonatomic) ESHTTPOperationWorkBlock work;
 @property (copy, nonatomic) ESHTTPOperationCompletionBlock completion;
-@property (nonatomic) NSBlockOperation *completionBlockOperation;
 @property (copy, nonatomic) ESHTTPOperationUploadBlock uploadProgress;
 @property (copy, nonatomic) ESHTTPOperationDownloadBlock downloadProgress;
 @property id processedResponse;
@@ -225,30 +224,30 @@ static int32_t GetOperationID(void)
 	{
 		[self.outputStream close];
 	}
+	NSOperation *finishOperation = [self finishOperation];
+	[self.completionQueue addOperation:finishOperation];
+}
+
+- (NSOperation *)finishOperation
+{
+	NSParameterAssert(self.isActualRunLoopThread);
 	NSBlockOperation *finishOperation = [NSBlockOperation new];
 	ESHTTPOperationCompletionBlock completion = self.completion;
-	void (^cleanupBlocks)(void) = ^{
-		self.completion = nil;
-		self.work = nil;
-		self.uploadProgress = nil;
-		self.downloadProgress = nil;
-	};
 	[finishOperation addExecutionBlock:^{
 		if (completion)
 		{
 			completion(self);
 		}
-		cleanupBlocks();
+		self.completion = nil;
+		self.work = nil;
+		self.uploadProgress = nil;
+		self.downloadProgress = nil;
 	}];
-	self.completionBlockOperation = finishOperation;
-	// Use a dependant operation to handle the case
-	// Where someone is waiting on the network queue
-	// and completion queue waitUntilAllOperationsAreFinished
-	// and scheduling completion after finishing creates a race
-	// https://github.com/rustle/ESNetworking/issues/5
-	NSOperation *dependantOperation = [NSOperation new];
-	[dependantOperation addDependency:finishOperation];
-	[self.completionQueue addOperation:dependantOperation];
+	// Make finish operation dependant on self
+	// so that self has to transition into 
+	// it's finished state before the op fires
+	[finishOperation addDependency:self];
+	return finishOperation;
 }
 
 - (void)processRequest:(NSError *)error
@@ -285,11 +284,6 @@ static int32_t GetOperationID(void)
 	{
 		return NO;
 	}
-	NSBlockOperation *finishOperation = self.completionBlockOperation;
-	// completionBlockOperation should always be set up by operationWillFinish
-	NSParameterAssert(finishOperation);
-	[self.completionQueue addOperation:finishOperation];
-	self.completionBlockOperation = nil;
 	return YES;
 }
 
